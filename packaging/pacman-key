@@ -1,0 +1,70 @@
+#!/usr/bin/env ruby
+#WANT_JSON
+
+require 'json'
+
+def exit_fail msg
+  exit_common({
+    'changed' => true,
+    'msg' => msg,
+    'failed' => true
+  })
+end
+
+def exit_not_changed msg
+  exit_common({
+    'changed' => false,
+    'msg' => msg
+  })
+end
+
+def exit_changed msg
+  exit_common({
+    'changed' => true,
+    'msg' => msg
+  })
+end
+
+def exit_common result
+  print JSON.dump(result)
+  exit
+end
+
+class PacmanKeyError < StandardError
+end
+
+def add_key key
+  output=`/usr/bin/pacman-key --nocolor --keyserver pgp.mit.edu --recv-keys #{key} 2>&1`
+  raise PacmanKeyError, output unless $? == 0
+  output=`/usr/bin/pacman-key --nocolor --lsign-key #{key} 2>&1`
+  raise PacmanKeyError, output unless $? == 0
+  raise PacmanKeyError, "Keys were not installed correctly" unless key_installed? key
+end
+
+def key_installed? key
+  key_present? key and key_signed? key
+end
+
+def key_present? key
+  `/usr/bin/pacman-key --list-keys #{key} 2>&1`
+  return $? == 0
+end
+
+def key_signed? key
+  output=`/usr/bin/pacman-key --list-sigs #{key} 2>&1`
+  return $? == 0 #and output =~ /Pacman Keyring Master Key <pacman@localhost>/m
+end
+
+ansible_in = JSON.parse(ARGF.read)
+key_to_add = ansible_in['key']
+
+exit_fail "Key was not specificed" if key_to_add.nil?
+
+begin
+  exit_not_changed "Key #{key_to_add} already present" if key_installed? key_to_add
+  add_key key_to_add
+  exit_changed "Key #{key_to_add} was added successfully"
+rescue PacmanKeyError => e
+  exit_fail "Failed to add key because #{e}"
+end
+

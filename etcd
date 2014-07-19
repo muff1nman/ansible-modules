@@ -1,0 +1,132 @@
+#!/usr/bin/env ruby
+#WANT_JSON
+
+require 'json'
+require 'ostruct'
+
+ACCEPTED_OPERATIONS = [:add]
+
+def exit_fail msg, changed=true
+  exit_common({
+    'changed' => changed,
+    'msg' => msg,
+    'failed' => true
+  })
+end
+
+def exit_not_changed msg
+  exit_common({
+    'changed' => false,
+    'msg' => msg
+  })
+end
+
+def exit_changed msg
+  exit_common({
+    'changed' => true,
+    'msg' => msg
+  })
+end
+
+def exit_common result
+  print JSON.dump(result)
+  exit
+end
+
+begin
+  require 'etcd'
+rescue LoadError
+  exit_fail "Etcd is not installed on this host"
+end
+
+class EtcdError < StandardError
+end
+
+def check options
+  exit_fail "Key was not specificed", false if options.key.nil?
+  exit_fail "Operation not supported", false if not ACCEPTED_OPERATIONS.include? options.operation
+
+  if (options.from_file.nil? and options.value.nil?) or
+     (!options.from_file.nil? and !options.value.nil?)
+    exit_fail "One of 'from_file' or 'value' must be specified", false 
+  end
+
+end
+
+def parse_options
+  ansible_in = JSON.parse(ARGF.read)
+  options = OpenStruct.new
+
+  options.key = ansible_in['key']
+  options.operation = (ansible_in['operation'] || :add).to_sym
+  options.from_file = ansible_in['from-file']
+  options.value = ansible_in['value']
+
+  check options
+
+  options
+
+end
+
+def content_of filename
+  File.read filename
+end
+
+def normalize key
+  key_wo_leads = key.match(/^\/*(.+?)\/*$/).captures[0]
+  ['ansible', '_meta', 'hostvars'] + key_wo_leads.split('/')
+end
+
+def dir_of key_array
+  '/' + key_array[0..-2].join('/')
+end
+
+def key_of key_array
+  '/' + key_array.join('/')
+end
+
+def etcd_add raw_key, value
+  c = Etcd.client
+  normalized = normalize raw_key
+  dir = dir_of normalized
+  begin
+    prev = c.get(key_of(normalized)).value
+    if prev == value
+      exit_not_changed("key already set")
+    end
+  rescue
+  end
+  begin
+    c.get(dir)
+  rescue Etcd::KeyNotFound
+    c.set(dir, dir: true)
+  end
+  c.set(key_of(normalized), value: value)
+end
+
+options = parse_options
+
+case options.operation
+when :add
+  if !options.from_file.nil?
+    value = content_of options.from_file
+  elsif !options.value.nil?
+    value = options.value
+  else
+    raise "Algorithm exception"
+  end
+  etcd_add options.key, value
+  exit_changed("#{options.key} set to #{value}")
+else
+  exit_common( {"skipped" => true, "msg" => "Not yet implmeneted" })
+end
+
+
+#begin
+  #exit_not_changed "Key #{key_to_add} already present" if key_installed? key_to_add
+  #add_key key_to_add
+  #exit_changed "Key #{key_to_add} was added successfully"
+#rescue PacmanKeyError => e
+  #exit_fail "Failed to add key because #{e}"
+#end
+

@@ -1,0 +1,266 @@
+#!/usr/bin/python -tt
+# -*- coding: utf-8 -*-
+
+# (c) 2012, Afterburn <http://github.com/afterburn>
+# (c) 2013, Aaron Bull Schaefer <aaron@elasticdog.com>
+#
+# This file is part of Ansible
+#
+# Ansible is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Ansible is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+
+DOCUMENTATION = '''
+---
+module: yaourt
+short_description: Manage packages with I(yaourt)
+description:
+    - Manage packages with the I(yaourt) package manager, which is used by
+      Arch Linux and its variants.
+author: muff1nman
+notes: []
+requirements: []
+options:
+    name:
+        description:
+            - Comma separated list of packages to install, upgrade, or remove.
+        required: false
+        default: null
+
+    state:
+        description:
+            - Desired state of the package(s).
+        required: false
+        default: "present"
+        choices: ["present", "absent"]
+
+    recurse:
+        description:
+            - When removing a package, also remove its dependencies, provided
+              that they are not required by other packages and were not
+              explicitly installed by a user.
+        required: false
+        default: "no"
+        choices: ["yes", "no"]
+        version_added: "1.3"
+
+    package_type:
+        description:
+            - FUTURE: When searching for packages and installing packages, this
+            parameter will be used.  For example, if 'aur' is specified, only
+            the aur will be searched for packages.  FUTURE: 'auto' can be used to
+            perform operations with either 'official' (also aliased to 'pacman') or 'aur' 
+        require: false
+        default: "aur"
+        choices: ["aur", "pacman", "official"]
+
+    update:
+        description:
+            - FUTURE: Whether or not to update packages. This can be
+              run as part of a package installation or as a separate step.
+        required: false
+        default: "no"
+        choices: ["yes", "no"]
+
+    update_cache:
+        description:
+            - *DEPRECATED: it is not recommended to update cache without also
+              performing a full upgrade* Whether or not to refresh the master
+              package lists. This can be run as part of a package installation or
+              as a separate step.
+        required: false
+        default: "no"
+        choices: ["yes", "no"]
+'''
+
+EXAMPLES = '''
+# Install package foo
+- yaourt: name=foo state=present
+
+# Remove packages foo and bar
+- yaourt: name=foo,bar state=absent
+
+# Recursively remove package baz
+- yaourt: name=baz state=absent recurse=yes
+
+# Run the equivalent of "yaourt -Syua" as a separate step
+- yaourt: update=yes
+'''
+
+import json
+import shlex
+import os
+import re
+import sys
+from collections import namedtuple
+from compiler.ast import flatten
+
+YAOURT_PATH = "/usr/bin/yaourt"
+
+ModuleStatus = namedtuple('ModuleStatus', 'changed msg failed')
+
+def yaourt_exec(module, args):
+    cmd = ' '.join(flatten([YAOURT_PATH, '--noconfirm', args]))
+    rc, stdout, stderr = module.run_command(cmd, check_rc=False)
+    return (rc, stdout, stderr)
+
+def query_package(module, name, state="present"):
+    if state == "present":
+        rc, _, _ = yaourt_exec(module,"-Q %s" % (name))
+
+        if rc == 0:
+            return True
+
+        return False
+
+
+def update_package_db(module, check_only):
+    deprecated="*DEPRECATION WARNING* "
+    if check_only:
+        return ModuleStatus(changed=True, failed=False, msg=deprecated+'The package master lists will be updated')
+
+    rc, _, _ = yaourt_exec(module,"-Syy")
+
+    if rc == 0:
+        return ModuleStatus(changed=True, 
+                            failed=False,
+                            msg=deprecated + "The package master lists were updated")
+    else:
+        return ModuleStatus(failed=True, changed=False, msg="could not update package db")
+
+
+def remove_packages(module, packages):
+    if module.params["recurse"]:
+        args = "Rs"
+    else:
+        args = "R"
+
+    rc, _, _ = yaourt_exec(module,' '.join(args + packges))
+
+    if rc != 0:
+        return ModuleStatus(failed=True,changed=False,msg="failed to remove %s" % (packages))
+    else:
+        return ModuleStatus(changed=True, failed=False, msg="removed %s package(s)" % (packages))
+
+def install_packages(module, packages):
+    install_c = 0
+
+    rc, stdout, stderr = yaourt_exec(module,' '.join(["-S"] + packages))
+
+    if rc != 0:
+        return ModuleStatus(failed=True,
+                            changed=False,
+                            msg="failed to install %s: %s" % (packages, stdout+stderr))
+    else: 
+        return ModuleStatus(changed=True,failed=False,msg="installed package(s): %s" % (packages))
+
+
+def check_packages(module, packages, state):
+    would_be_changed = []
+    for package in packages:
+        installed = query_package(module, package)
+        if ((state == "present" and not installed) or
+                (state == "absent" and installed)):
+            would_be_changed.append(package)
+    if would_be_changed:
+        if state == "absent":
+            state = "removed"
+
+        return (would_be_changed, ModuleStatus(changed=True,
+                                               failed=False,
+                                               msg="%s package(s) would be %s" %
+                                               (len(would_be_changed), state)))
+    else:
+        return (would_be_changed, ModuleStatus(changed=False, failed=False,
+                                               msg="package(s) already %s" %
+                                               state))
+
+def status_join(status1,status2):
+
+    if not status1:
+        return status2
+    if not status2:
+        return status1
+
+    return ModuleStatus(
+        changed=(status1.changed or status2.changed),
+        failed=(status1.failed or status2.failed),
+        msg=', '.join(filter(None, [status1.msg,status2.msg])))
+
+def main():
+    module = AnsibleModule(
+        argument_spec    = dict(
+            name         = dict(aliases=['pkg']),
+            state        = dict(default='present', choices=['present', 'installed', 'absent', 'removed']),
+            recurse      = dict(default='no', choices=BOOLEANS, type='bool'),
+            update_cache = dict(default='no', aliases=['update-cache'], choices=BOOLEANS, type='bool')),
+        required_one_of = [['name', 'update_cache']],
+        supports_check_mode = True)
+    return_status = ModuleStatus(changed=False,failed=False,msg=None)
+
+    p = module.params
+
+    if not os.path.exists(YAOURT_PATH):
+        if not module.check_mode:
+            module.fail_json(msg="cannot find yaourt looking for %s" %
+                             (YAOURT_PATH))
+        else:
+            module.exit_json(changed=False,failed=False, skipped=True,
+                             msg="Will need yaourt installed before "
+                             "any feedback can be given in check mode!")
+
+    # normalize the state parameter
+    if p['state'] in ['present', 'installed']:
+        p['state'] = 'present'
+    elif p['state'] in ['absent', 'removed']:
+        p['state'] = 'absent'
+
+
+    if p["update_cache"]:
+        return_status = status_join(return_status, 
+                                    update_package_db(module, module.check_mode))
+
+    if return_status.failed:
+        module.exit_json(*return_status)
+
+    if p['name']:
+        pkgs = p['name'].split(',')
+
+        pkg_ret_status = None
+        packages_to_operate_on, check_status = check_packages(module, pkgs, p['state'])
+
+        if module.check_mode:
+            pkg_ret_status = check_status
+        elif packages_to_operate_on:
+            if p['state'] == 'present':
+                pkg_ret_status = install_packages(module,
+                                                  packages_to_operate_on)
+
+            elif p['state'] == 'absent':
+                pkg_ret_status = remove_packages(module, packages_to_operate_on)
+            else:
+                pkg_ret_status = ModuleStatus(
+                    failed=True, 
+                    changed=False, 
+                    msg="One of 'name' or 'update_cache' must be specified")
+
+        return_status = status_join(return_status, pkg_ret_status)
+
+    if return_status.failed:
+      module.fail_json(msg=return_status.msg)
+    else:
+      module.exit_json(msg=return_status.msg, changed=return_status.changed)
+    
+from ansible.module_utils.basic import *
+main()        
+
+# vim: set ft=python:

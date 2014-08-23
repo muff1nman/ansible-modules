@@ -92,7 +92,7 @@ def etcd_add raw_key, value
   begin
     prev = c.get(key_of(normalized)).value
     if prev == value
-      exit_not_changed("key already set")
+      exit_fail("key already set", false)
     end
   rescue
   end
@@ -100,6 +100,8 @@ def etcd_add raw_key, value
     c.get(dir)
   rescue Etcd::KeyNotFound
     c.set(dir, dir: true)
+  rescue RuntimeError
+    exit_not_changed("Could not set new key on etcd")
   end
   c.set(key_of(normalized), value: value)
 end

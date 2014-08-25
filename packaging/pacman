@@ -145,32 +145,53 @@ def remove_packages(module, packages):
 
     module.exit_json(changed=False, msg="package(s) already absent")
 
+def install_common(module, packages, using):
+    if isinstance(packages,str):
+        pkg_list = packages
+    elif isinstance(packages, list):
+        pkg_list = ' '.join(packages)
+    else:
+        module.fail_json(msg="could not understand package list %s" % (packages))
 
-def install_packages(module, packages, package_files):
+    cmd = "pacman %s --noconfirm " + using + " %s"  % (pkg_list)
+    rc, stdout, stderr = module.run_command(cmd, check_rc=False)
+    if rc != 0:
+        module.fail_json(msg="failed to install %s" % (pkg_list))
+    else:
+        return True
+
+# if there is at least one package to install and there are no -U packages, then
+# install as a group, otherwise do a piecewise install
+
+def install_packages(module,packages, package_files):
     install_c = 0
+    packges_needing_to_be_installed  = []
+    package_files_needing_to_be_installed = []
 
     for i, package in enumerate(packages):
         if query(module, package):
             continue
-
-        if package_files[i]:
-            params = '-U %s' % package_files[i]
         else:
-            params = '-S %s' % package
+            if package_files[i]:
+                package_files_needing_to_be_installed << package_files[i]
+            else:
+                packges_needing_to_be_installed << package
+    
+    if not package_files_needing_to_be_installed and not packges_needing_to_be_installed:
+        module.exit_json(changed=False, msg="package(s) already installed")
+    elif not package_files_needing_to_be_installed:
+        install_common(module,packges_needing_to_be_installed, "-S")
+        module.exit_json(changed=True,msg="Successfully installed %s" %(packges_needing_to_be_installed))
+    else:
+        install_packages_indiv(module,packges_needing_to_be_installed, "-S")
+        install_packages_indiv(module,package_files_needing_to_be_installed,"-U")
+        module.exit_json(changed=True,msg="Successfully installed package listing")
+                         #% (packges_needing_to_be_installed +
+                           #package_files_needing_to_be_installed))
 
-        cmd = "pacman %s --noconfirm" % (params)
-        rc, stdout, stderr = module.run_command(cmd, check_rc=False)
-
-        if rc != 0:
-            module.fail_json(msg="failed to install %s" % (package))
-
-        install_c += 1
-
-    if install_c > 0:
-        module.exit_json(changed=True, msg="installed %s package(s)" % (install_c))
-
-    module.exit_json(changed=False, msg="package(s) already installed")
-
+def install_packages_indiv(module,packages,using):
+    for package in enumerate(packages):
+        install_common(module,package,using)
 
 def check_packages(module, packages, state):
     would_be_changed = []

@@ -92,17 +92,18 @@ import sys
 
 PACMAN_PATH = "/usr/bin/pacman"
 
-def query_package(module, name, state="present"):
-    # pacman -Q returns 0 if the package is installed,
-    # 1 if it is not installed
-    if state == "present":
-        cmd = "pacman -Q %s" % (name)
-        rc, stdout, stderr = module.run_command(cmd, check_rc=False)
+def query_group(module, name):
+    cmd = "pacman -Qg %s" % (name)
+    rc, stdout, stderr = module.run_command(cmd,check_rc=False)
+    return rc == 0
 
-        if rc == 0:
-            return True
+def query_package(module, name):
+    cmd = "pacman -Q %s" % (name)
+    rc, stdout, stderr = module.run_command(cmd, check_rc=False)
+    return rc == 0
 
-        return False
+def query(module, name):
+    return query_package(module,name) or query_group(module,name)
 
 
 def update_package_db(module, upgrade):
@@ -127,7 +128,7 @@ def remove_packages(module, packages):
     # Using a for loop incase of error, we can report the package that failed
     for package in packages:
         # Query the package first, to see if we even need to remove
-        if not query_package(module, package):
+        if not query(module, package):
             continue
 
         cmd = "pacman -%s %s --noconfirm" % (args, package)
@@ -149,7 +150,7 @@ def install_packages(module, packages, package_files):
     install_c = 0
 
     for i, package in enumerate(packages):
-        if query_package(module, package):
+        if query(module, package):
             continue
 
         if package_files[i]:
@@ -174,7 +175,7 @@ def install_packages(module, packages, package_files):
 def check_packages(module, packages, state):
     would_be_changed = []
     for package in packages:
-        installed = query_package(module, package)
+        installed = query(module, package)
         if ((state == "present" and not installed) or
                 (state == "absent" and installed)):
             would_be_changed.append(package)

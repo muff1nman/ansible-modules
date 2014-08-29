@@ -175,7 +175,7 @@ def install_packages(module,packages, package_files):
             if package_files[i]:
                 package_files_needing_to_be_installed << package_files[i]
             else:
-                packges_needing_to_be_installed << package
+                packges_needing_to_be_installed.append(package)
     
     if not package_files_needing_to_be_installed and not packges_needing_to_be_installed:
         module.exit_json(changed=False, msg="package(s) already installed")

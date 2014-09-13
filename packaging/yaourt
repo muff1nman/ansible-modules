@@ -144,12 +144,26 @@ def remove_packages(module, packages):
     else:
         args = "R"
 
-    rc, _, _ = yaourt_exec(module,' '.join(args + packges))
+    remove_c = 0
+    # Using a for loop incase of error, we can report the package that failed
+    for package in packages:
+        # Query the package first, to see if we even need to remove
+        if not query_package(module, package):
+            continue
 
-    if rc != 0:
-        return ModuleStatus(failed=True,changed=False,msg="failed to remove %s" % (packages))
-    else:
-        return ModuleStatus(changed=True, failed=False, msg="removed %s package(s)" % (packages))
+        rc, _, _ = yaourt_exec(module," -%s %s" % (args, package))
+
+        if rc != 0:
+            module.fail_json(msg="failed to remove %s" % (package))
+
+        remove_c += 1
+
+    if remove_c > 0:
+
+        module.exit_json(changed=True, msg="removed %s package(s)" % remove_c)
+
+    module.exit_json(changed=False, msg="package(s) already absent")
+
 
 def install_packages(module, packages):
     install_c = 0

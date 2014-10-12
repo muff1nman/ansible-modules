@@ -153,10 +153,10 @@ def install_common(module, packages, using):
     else:
         module.fail_json(msg="could not understand package list %s" % (packages))
 
-    cmd = "pacman %s --noconfirm " + using + " %s"  % (pkg_list)
+    cmd = "pacman --noconfirm " + using + " %s"  % (pkg_list)
     rc, stdout, stderr = module.run_command(cmd, check_rc=False)
     if rc != 0:
-        module.fail_json(msg="failed to install %s" % (pkg_list))
+        module.fail_json(msg="failed to install %s. stdout was: [%s] stderr was: [%s]" % (pkg_list, stdout, stderr))
     else:
         return True
 

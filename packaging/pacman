@@ -151,7 +151,7 @@ def install_common(module, packages, using):
     elif isinstance(packages, list):
         pkg_list = ' '.join(packages)
     else:
-        module.fail_json(msg="could not understand package list %s" % (packages))
+        module.fail_json(msg="could not understand package list {0}".format(packages))
 
     cmd = "pacman --noconfirm " + using + " %s"  % (pkg_list)
     rc, stdout, stderr = module.run_command(cmd, check_rc=False)
@@ -173,7 +173,7 @@ def install_packages(module,packages, package_files):
             continue
         else:
             if package_files[i]:
-                package_files_needing_to_be_installed << package_files[i]
+                package_files_needing_to_be_installed.append(package_files[i])
             else:
                 packges_needing_to_be_installed.append(package)
     

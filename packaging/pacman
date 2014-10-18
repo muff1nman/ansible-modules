@@ -190,7 +190,7 @@ def install_packages(module,packages, package_files):
                            #package_files_needing_to_be_installed))
 
 def install_packages_indiv(module,packages,using):
-    for package in enumerate(packages):
+    for _, package in enumerate(packages):
         install_common(module,package,using)
 
 def check_packages(module, packages, state):

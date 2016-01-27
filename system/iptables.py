@@ -22,6 +22,7 @@ BINS = dict(
     ipv4='iptables',
     ipv6='ip6tables',
 )
+IPSAVE = '/usr/libexec/iptables/iptables.init'
 
 DOCUMENTATION = '''
 ---
@@ -357,6 +358,9 @@ def main():
         append_rule(iptables_path, module, module.params)
     else:
         remove_rule(iptables_path, module, module.params)
+    
+    if os.access(IPSAVE, os.X_OK):
+        module.run_command([IPSAVE, "save"], check_rc=True)
 
     module.exit_json(**args)
 

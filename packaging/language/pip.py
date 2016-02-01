@@ -231,7 +231,6 @@ def _fail(module, cmd, out, err):
 
 
 def main():
-    import pdb; pdb.set_trace()
     state_map = dict(
         present='install',
         absent='uninstall -y',
@@ -251,7 +250,7 @@ def main():
             use_mirrors=dict(default='yes', type='bool'),
             extra_args=dict(default=None, required=False),
             editable=dict(default='yes', type='bool', required=False),
-            chdir=dict(default=None, required=False, type='path'),
+            chdir=dict(default=None, required=False, type='str'),
             executable=dict(default=None, required=False),
         ),
         required_one_of=[['name', 'requirements']],

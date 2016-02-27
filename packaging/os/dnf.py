@@ -244,11 +244,16 @@ def ensure(module, base, state, names):
             base.read_comps()
 
         groups = []
+	envs = []
         for group_spec in group_specs:
             group = base.comps.group_by_pattern(group_spec)
             if group:
                 groups.append(group)
             else:
+                env = base.comps.environments_by_pattern(group_spec)
+		if env:
+			envs.append(env)
+            if not groups and not envs:
                 module.fail_json(
                     msg="No group {} available.".format(group_spec))
 
@@ -259,6 +264,13 @@ def ensure(module, base, state, names):
             # Install groups.
             for group in groups:
                 base.group_install(group, const.GROUP_PACKAGE_TYPES)
+            # Install envs
+            for env in envs:
+                try:
+                    base.env_group_install(env, const.GROUP_PACKAGE_TYPES)
+                except dnf.exceptions.Error as err:
+                    if str(err) != "Nothing to do.":
+                        raise err
             # Install packages.
             for pkg_spec in pkg_specs:
                 _mark_package_install(module, base, pkg_spec)
@@ -273,6 +285,12 @@ def ensure(module, base, state, names):
                 except exceptions.CompsError:
                     # If not already installed, try to install.
                     base.group_install(group, const.GROUP_PACKAGE_TYPES)
+            for env in envs:
+                try:
+                    base.env_group_upgrade(env)
+                except exceptions.CompsError:
+                    # If not already installed, try to install.
+                    base.env_group_install(env, const.GROUP_PACKAGE_TYPES)
             for pkg_spec in pkg_specs:
                 # best effort causes to install the latest package
                 # even if not previously installed
@@ -286,9 +304,9 @@ def ensure(module, base, state, names):
                     msg="Cannot remove paths -- please specify package name.")
 
             installed = base.sack.query().installed()
-            for group in groups:
-                if installed.filter(name=group.name):
-                    base.group_remove(group)
+            if envs or groups:
+                module.fail_json(
+                    msg="Group/Env removal is not currently working")
             for pkg_spec in pkg_specs:
                 if installed.filter(name=pkg_spec):
                     base.remove(pkg_spec)

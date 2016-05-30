@@ -1,0 +1,48 @@
+#!/usr/bin/python
+
+import json
+#import re
+#import subprocess
+import pwd
+
+from ansible.module_utils.basic import *
+
+#Index 	Attribute 	Meaning
+#0 	pw_name 	Login name
+#1 	pw_passwd 	Optional encrypted password
+#2 	pw_uid 	Numerical user ID
+#3 	pw_gid 	Numerical group ID
+#4 	pw_gecos 	User name or comment field
+#5 	pw_dir 	User home directory
+#6 	pw_shell 	User command interpreter
+
+def get_user_info(user):
+    obj = pwd.getpwnam(user)
+    return { 
+	    "name":  obj.pw_name,
+	    "passwd": obj.pw_passwd,
+	    "uid": obj.pw_uid,
+	    "gid": obj.pw_gid,
+	    "gecos": obj.pw_gecos,
+	    "dir": obj.pw_dir,
+	    "shell": obj.pw_shell,
+	    }
+
+#def _run_info_command(user):
+#    return subprocess.check_output(["getent", "passwd", user]).strip()
+
+def main():
+
+    module = AnsibleModule(
+        argument_spec = {
+            'user': { 'required': True }
+        }
+    )
+
+    user = module.params['user']
+    
+    info = get_user_info(user)
+
+    print json.dumps(info)
+
+main()

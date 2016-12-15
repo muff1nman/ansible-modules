@@ -130,7 +130,7 @@ def main():
             except subprocess.CalledProcessError, cpe:
                 module.fail_json(msg=str(dir(cpe)))
         
-    elif current_path != path:
+    elif path != 'auto' and current_path != path:
         if module.check_mode:
             module.exit_json(changed=True, current_path=current_path)
         try:

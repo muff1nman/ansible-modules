@@ -127,7 +127,7 @@ def main():
                     check_rc=True
                 )
                 module.exit_json(changed=True)
-            except subprocess.CalledProcessError, cpe:
+            except subprocess.CalledProcessError as cpe:
                 module.fail_json(msg=str(dir(cpe)))
         
     elif path != 'auto' and current_path != path:
@@ -151,7 +151,7 @@ def main():
             )
 
             module.exit_json(changed=True)
-        except subprocess.CalledProcessError, cpe:
+        except subprocess.CalledProcessError as cpe:
             module.fail_json(msg=str(dir(cpe)))
     else:
         module.exit_json(changed=False)

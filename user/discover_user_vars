@@ -5,7 +5,7 @@ import json
 #import subprocess
 import pwd
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule
 
 #Index 	Attribute 	Meaning
 #0 	pw_name 	Login name
@@ -36,13 +36,14 @@ def main():
     module = AnsibleModule(
         argument_spec = {
             'user': { 'required': True }
-        }
+        },
+        supports_check_mode=True,
     )
 
     user = module.params['user']
     
     info = get_user_info(user)
 
-    print(json.dumps(info))
+    module.exit_json(**info)
 
 main()

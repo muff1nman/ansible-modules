@@ -1,3 +1,0 @@
-[submodule "dconf"]
-	path = dconf
-	url = https://github.com/muff1nman/ansible-dconf.git
